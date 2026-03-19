@@ -16,7 +16,7 @@ OUTPUT_DIR = "/app/output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Servir le frontend
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
 
 
 @app.get("/health")
