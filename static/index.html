@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Dealtonsite OCR</title>
+
+<style>
+body {
+    font-family: 'Segoe UI';
+    background: #0f172a;
+    color: white;
+    display: flex;
+    justify-content: center;
+    padding: 40px;
+}
+
+.container {
+    width: 600px;
+}
+
+h1 {
+    text-align: center;
+}
+
+.dropzone {
+    border: 2px dashed #6366f1;
+    padding: 40px;
+    text-align: center;
+    border-radius: 10px;
+    cursor: pointer;
+    background: #1e293b;
+}
+
+.dropzone:hover {
+    background: #2d3a55;
+}
+
+button {
+    width: 100%;
+    padding: 15px;
+    background: #6366f1;
+    border: none;
+    margin-top: 20px;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.loader {
+    display: none;
+    text-align: center;
+    margin-top: 20px;
+}
+
+.result {
+    margin-top: 30px;
+}
+
+.card {
+    background: #1e293b;
+    padding: 15px;
+    margin-top: 10px;
+    border-radius: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>🚀 Dealtonsite OCR</h1>
+
+    <div class="dropzone" onclick="fileInput.click()">
+        📄 Clique pour choisir un fichier
+        <input type="file" id="fileInput" hidden>
+    </div>
+
+    <button onclick="uploadFile()">Analyser</button>
+
+    <div class="loader" id="loader">⏳ Analyse en cours...</div>
+
+    <div id="result" class="result"></div>
+</div>
+
+<script>
+const API_URL = "/ocr";
+
+async function uploadFile() {
+    const file = document.getElementById("fileInput").files[0];
+
+    if (!file) {
+        alert("Choisis un fichier !");
+        return;
+    }
+
+    document.getElementById("loader").style.display = "block";
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const response = await fetch(API_URL, {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        document.getElementById("loader").style.display = "none";
+
+        let html = "<h2>Résultat</h2>";
+
+        if (data.fields) {
+            html += "<div class='card'><b>Données extraites :</b><br>";
+            for (let key in data.fields) {
+                html += key + " : " + data.fields[key] + "<br>";
+            }
+            html += "</div>";
+        }
+
+        html += "<div class='card'><b>Texte :</b><br>" + data.text_preview + "</div>";
+
+        html += `
+        <div class='card'>
+            <a href="${data.download_pdf}" target="_blank">📄 PDF</a><br>
+            <a href="${data.download_excel}" target="_blank">📊 Excel</a><br>
+            <a href="${data.download_word}" target="_blank">📝 Word</a>
+        </div>
+        `;
+
+        document.getElementById("result").innerHTML = html;
+
+    } catch (error) {
+        alert("Erreur serveur");
+        console.error(error);
+    }
+}
+</script>
+
+</body>
+</html>
