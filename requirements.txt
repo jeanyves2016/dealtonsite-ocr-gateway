@@ -7,3 +7,4 @@ python-docx
 lxml
 pdfminer.six
 Pillow
+sqlalchemy
