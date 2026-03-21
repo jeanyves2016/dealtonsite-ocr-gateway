@@ -10,11 +10,37 @@ import subprocess
 import os
 import uuid
 import re
+import json
+
+# 🔥 DB
+from sqlalchemy import create_engine, Column, Integer, String, Text
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 app = FastAPI(title="Dealtonsite OCR Gateway")
 
 OUTPUT_DIR = "/app/output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# =====================
+# 🟣 DATABASE
+# =====================
+DATABASE_URL = "sqlite:///./ocr.db"
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+
+class DocumentDB(Base):
+    __tablename__ = "documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String)
+    text = Column(Text)
+    fields = Column(Text)
+
+
+Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")
@@ -22,12 +48,13 @@ def health():
     return {"status": "ok"}
 
 
-# 🔥 nettoyage texte pour éviter crash Word
+# =====================
+# 🟣 UTILS
+# =====================
 def clean_text(text):
     return re.sub(r"[\x00-\x1F\x7F]", "", text)
 
 
-# 🔥 extraction simple
 def extract_fields(text):
     data = {}
 
@@ -47,6 +74,9 @@ def extract_fields(text):
     return data
 
 
+# =====================
+# 🟣 OCR
+# =====================
 @app.post("/ocr")
 async def ocr(file: UploadFile = File(...)):
     file_id = str(uuid.uuid4())
@@ -54,18 +84,18 @@ async def ocr(file: UploadFile = File(...)):
     input_path = f"/tmp/{file_id}_{file.filename}"
     output_path = f"{OUTPUT_DIR}/ocr_{file_id}.pdf"
 
-    # ✅ sauvegarde fichier
+    # sauvegarde
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # ✅ conversion image → PDF
+    # conversion image → PDF
     if input_path.lower().endswith((".png", ".jpg", ".jpeg")):
         image = Image.open(input_path).convert("RGB")
         pdf_input_path = input_path + ".pdf"
         image.save(pdf_input_path)
         input_path = pdf_input_path
 
-    # ✅ OCR
+    # OCR
     try:
         subprocess.run([
             "ocrmypdf",
@@ -77,29 +107,40 @@ async def ocr(file: UploadFile = File(...)):
         print("OCR ERROR:", e)
         return {"status": "error", "message": "OCR failed"}
 
-    # ✅ extraction texte
+    # extraction texte
     try:
         extracted_text = extract_text(output_path)
     except Exception as e:
         print("TEXT ERROR:", e)
         extracted_text = "Extraction texte échouée"
 
-    # ✅ nettoyage texte
     cleaned_text = clean_text(extracted_text)
-
     fields = extract_fields(cleaned_text)
 
-    # ✅ Excel
+    # =====================
+    # 🟣 SAVE TO DB
+    # =====================
+    db = SessionLocal()
+    doc = DocumentDB(
+        filename=file.filename,
+        text=cleaned_text,
+        fields=json.dumps(fields)
+    )
+    db.add(doc)
+    db.commit()
+    db.close()
+
+    # Excel
     excel_path = f"{OUTPUT_DIR}/ocr_{file_id}.xlsx"
     df = pd.DataFrame([fields if fields else {"text": cleaned_text[:2000]}])
     df.to_excel(excel_path, index=False)
 
-    # ✅ Word
+    # Word
     word_path = f"{OUTPUT_DIR}/ocr_{file_id}.docx"
-    doc = Document()
-    doc.add_heading("OCR Result", 0)
-    doc.add_paragraph(cleaned_text)
-    doc.save(word_path)
+    docx_file = Document()
+    docx_file.add_heading("OCR Result", 0)
+    docx_file.add_paragraph(cleaned_text)
+    docx_file.save(word_path)
 
     return {
         "status": "success",
@@ -111,6 +152,9 @@ async def ocr(file: UploadFile = File(...)):
     }
 
 
+# =====================
+# 🟣 DOWNLOAD
+# =====================
 @app.get("/download/{file_id}")
 def download_pdf(file_id: str):
     file_path = f"{OUTPUT_DIR}/ocr_{file_id}.pdf"
@@ -129,5 +173,26 @@ def download_word(file_id: str):
     return FileResponse(file_path, filename="result.docx")
 
 
-# ⚠️ IMPORTANT : frontend à la fin
+# =====================
+# 🟣 HISTORY
+# =====================
+@app.get("/documents")
+def get_documents():
+    db = SessionLocal()
+    docs = db.query(DocumentDB).all()
+    db.close()
+
+    return [
+        {
+            "id": d.id,
+            "filename": d.filename,
+            "fields": json.loads(d.fields) if d.fields else {}
+        }
+        for d in docs
+    ]
+
+
+# =====================
+# 🟣 FRONTEND
+# =====================
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
