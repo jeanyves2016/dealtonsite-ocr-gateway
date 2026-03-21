@@ -63,7 +63,10 @@ async def ocr(file: UploadFile = File(...)):
     except subprocess.CalledProcessError:
         return {"status": "error", "message": "OCR failed"}
 
-    extracted_text = extract_text(output_path)
+    try:
+        extracted_text = extract_text(output_path)
+    except:
+        extracted_text = "Extraction texte échouée"
     fields = extract_fields(extracted_text)
 
     # Excel
