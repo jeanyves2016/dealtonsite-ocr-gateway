@@ -15,8 +15,6 @@ app = FastAPI(title="Dealtonsite OCR Gateway")
 OUTPUT_DIR = "/app/output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Servir le frontend
-app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
 
 
 @app.get("/health")
@@ -107,3 +105,7 @@ def download_excel(file_id: str):
 def download_word(file_id: str):
     file_path = f"{OUTPUT_DIR}/ocr_{file_id}.docx"
     return FileResponse(file_path, filename="result.docx")
+
+
+# Servir le frontend
+app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
